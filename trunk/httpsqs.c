@@ -228,7 +228,6 @@ PHP_FUNCTION(httpsqs_get) {
 			ZVAL_LONG(pos, httpsqs->response_pos);
 			ZVAL_STRING(data, httpsqs->response_body, 1);
 		
-			php_printf("%d", httpsqs->response_pos);
 			array_init(return_value);
 
 			zend_hash_update(HASH_OF(return_value), "pos", sizeof("pos"), &pos, sizeof(zval*), NULL);
