@@ -37,8 +37,6 @@ extern zend_module_entry httpsqs_module_entry;
 typedef struct httpsqs {
 	char *hostname;
 	int hostname_len;
-	char *query;
-	int query_len;
 	int response_code;
 	int response_pos;
 	char *response_body;
