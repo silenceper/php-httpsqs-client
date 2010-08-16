@@ -63,6 +63,8 @@ PHP_FUNCTION(httpsqs_reset);
 PHP_FUNCTION(httpsqs_maxqueue);
 PHP_FUNCTION(httpsqs_synctime);
 
+PHP_METHOD(Httpsqs, __construct);
+
 ZEND_BEGIN_MODULE_GLOBALS(httpsqs)
 	long default_port;
 	char *default_charset;
