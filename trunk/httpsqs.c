@@ -43,6 +43,7 @@ ZEND_DECLARE_MODULE_GLOBALS(httpsqs)
 
 /* True global resources - no need for thread safety here */
 static int le_httpsqs;
+static zend_class_entry *httpsqs_class_entry_ptr;
 
 /* {{{ httpsqs_functions[]
  *
@@ -61,6 +62,18 @@ zend_function_entry httpsqs_functions[] = {
 	{NULL, NULL, NULL}	/* Must be the last line in httpsqs_functions[] */
 };
 /* }}} */
+
+static zend_function_entry httpsqs_class_functions[] = {
+	PHP_ME(Httpsqs, __construct, NULL, ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
+	PHP_FALIAS(get, httpsqs_get, NULL)
+	PHP_FALIAS(put, httpsqs_put, NULL)
+	PHP_FALIAS(status, httpsqs_status, NULL)
+	PHP_FALIAS(view, httpsqs_view, NULL)
+	PHP_FALIAS(reset, httpsqs_reset, NULL)
+	PHP_FALIAS(maxqueue, httpsqs_maxqueue, NULL)
+	PHP_FALIAS(synctime, httpsqs_synctime, NULL)
+	{NULL, NULL, NULL}
+};
 
 /* {{{ httpsqs_module_entry
  */
@@ -121,6 +134,10 @@ PHP_MINIT_FUNCTION(httpsqs)
 	/* If you have INI entries, uncomment these lines 
 	REGISTER_INI_ENTRIES();
 	*/
+	zend_class_entry httpsqs_class_entry;
+	INIT_CLASS_ENTRY(httpsqs_class_entry, "Httpsqs", httpsqs_class_functions);
+	httpsqs_class_entry_ptr = zend_register_internal_class(&httpsqs_class_entry TSRMLS_CC);
+
 #ifdef ZTS
 	ts_allocate_id(&httpsqs_globals_id, sizeof(zend_httpsqs_globals), (ts_allocate_ctor) php_httpsqs_init_globals, NULL);
 #else
@@ -176,12 +193,13 @@ PHP_MINFO_FUNCTION(httpsqs)
 }
 /* }}} */
 
-PHP_FUNCTION(httpsqs_connect) {
+static void httpsqs_connect(INTERNAL_FUNCTION_PARAMETERS) {
+	zval *object = getThis();
 	httpsqs_t *httpsqs;
 	char *hostname, *host = HTTPSQS_G(default_host);
 	long port = HTTPSQS_G(default_port);
-	int hostname_len, host_len;
-
+	int hostname_len, host_len, list_id;
+	
 	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "|sl", &host, &host_len, &port) == FAILURE) {
 		RETURN_NULL();
 	}
@@ -193,18 +211,43 @@ PHP_FUNCTION(httpsqs_connect) {
 	httpsqs->hostname_len = hostname_len;
 	efree(hostname);
 
-	ZEND_REGISTER_RESOURCE(return_value, httpsqs, le_httpsqs);
+	if (!object) {
+		ZEND_REGISTER_RESOURCE(return_value, httpsqs, le_httpsqs);
+	} else {
+		list_id = zend_list_insert(httpsqs, le_httpsqs);
+		add_property_resource(object, "connection", list_id);
+	}
+
+}
+
+PHP_METHOD(Httpsqs, __construct) {
+	httpsqs_connect(INTERNAL_FUNCTION_PARAM_PASSTHRU);
+}
+
+PHP_FUNCTION(httpsqs_connect) {
+	httpsqs_connect(INTERNAL_FUNCTION_PARAM_PASSTHRU);
 }
 
 PHP_FUNCTION(httpsqs_get) {
 	httpsqs_t *httpsqs;
-	zval *hr;
+	zval *hr, **connection, *object = getThis();
 	zend_bool return_array = 0;
 	char *queuename, *charset = HTTPSQS_G(default_charset), *query;
 	int queuename_len, charset_len, query_len;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs|bs", &hr, &queuename, &queuename_len, &return_array, &charset, &charset_len) == FAILURE) {
-		RETURN_NULL();
+	if (object) {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|bs", &queuename, &queuename_len, &return_array, &charset, &charset_len) == FAILURE) {
+			RETURN_NULL();
+		}
+		if (zend_hash_find(Z_OBJPROP_P(object), "connection", sizeof("connection"),(void **) &connection) == FAILURE) {
+			RETURN_NULL();
+		}
+		MAKE_STD_ZVAL(hr);
+		ZVAL_RESOURCE(hr, Z_LVAL_PP(connection));
+	} else {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs|bs", &hr, &queuename, &queuename_len, &return_array, &charset, &charset_len) == FAILURE) {
+			RETURN_NULL();
+		}
 	}
 
 	ZEND_FETCH_RESOURCE(httpsqs, httpsqs_t*, &hr, -1, HTTPSQS_RES_NAME, le_httpsqs);
@@ -238,12 +281,24 @@ PHP_FUNCTION(httpsqs_get) {
 
 PHP_FUNCTION(httpsqs_put) {
 	httpsqs_t *httpsqs;
-	zval *hr;
+	zval *hr, **connection, *object = getThis();
 	char *queuename, *data, *charset =HTTPSQS_G(default_charset), *query;
 	int queuename_len, data_len, charset_len, query_len;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rss|s", &hr, &queuename, &queuename_len, &data, &data_len, &charset, &charset_len) == FAILURE) {
-		RETURN_FALSE;
+	if (object) { 
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "ss|s", &queuename, &queuename_len, &data, &data_len, &charset, &charset_len) == FAILURE) {
+			RETURN_FALSE;
+		}
+		if (zend_hash_find(Z_OBJPROP_P(object), "connection", sizeof("connection"), (void **) &connection) == FAILURE) {
+			RETURN_FALSE;
+		}
+
+		MAKE_STD_ZVAL(hr);
+		ZVAL_RESOURCE(hr, Z_LVAL_PP(connection));
+	} else {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rss|s", &hr, &queuename, &queuename_len, &data, &data_len, &charset, &charset_len) == FAILURE) {
+			RETURN_FALSE;
+		}
 	}
 
 	ZEND_FETCH_RESOURCE(httpsqs, httpsqs_t*, &hr, -1, HTTPSQS_RES_NAME, le_httpsqs);
@@ -263,13 +318,25 @@ PHP_FUNCTION(httpsqs_put) {
 
 PHP_FUNCTION(httpsqs_status) {
 	httpsqs_t *httpsqs;
-	zval *hr;
+	zval *hr, **connection, *object = getThis();
 	char *queuename, *charset = HTTPSQS_G(default_charset), *query;
 	int queuename_len, charset_len, query_len;
 	zend_bool return_json = 0;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs|bs", &hr, &queuename, &queuename_len, &return_json, &charset, &charset_len) == FAILURE) {
-		RETURN_NULL();
+	if (object) { 
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s|bs", &queuename, &queuename_len, &return_json, &charset, &charset_len) == FAILURE) {
+			RETURN_FALSE;
+		}
+		if (zend_hash_find(Z_OBJPROP_P(object), "connection", sizeof("connection"), (void **) &connection) == FAILURE) {
+			RETURN_FALSE;
+		}
+
+		MAKE_STD_ZVAL(hr);
+		ZVAL_RESOURCE(hr, Z_LVAL_PP(connection));
+	} else {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs|bs", &hr, &queuename, &queuename_len, &return_json, &charset, &charset_len) == FAILURE) {
+			RETURN_NULL();
+		}
 	}
 
 	ZEND_FETCH_RESOURCE(httpsqs, httpsqs_t*, &hr, -1, HTTPSQS_RES_NAME, le_httpsqs);
@@ -289,12 +356,24 @@ PHP_FUNCTION(httpsqs_status) {
 
 PHP_FUNCTION(httpsqs_view) {
 	httpsqs_t *httpsqs;
-	zval *hr;
+	zval *hr, **connection, *object = getThis();
 	char *queuename, *query, *charset = HTTPSQS_G(default_charset);
 	int queuename_len, query_len, charset_len, pos;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rsl|s", &hr, &queuename, &queuename_len, &pos, &charset, &charset_len) == FAILURE) {
-		RETURN_NULL();
+	if (object) { 
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sl|s", &queuename, &queuename_len, &pos, &charset, &charset_len) == FAILURE) {
+			RETURN_FALSE;
+		}
+		if (zend_hash_find(Z_OBJPROP_P(object), "connection", sizeof("connection"), (void **) &connection) == FAILURE) {
+			RETURN_FALSE;
+		}
+
+		MAKE_STD_ZVAL(hr);
+		ZVAL_RESOURCE(hr, Z_LVAL_PP(connection));
+	} else {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rsl|s", &hr, &queuename, &queuename_len, &pos, &charset, &charset_len) == FAILURE) {
+			RETURN_NULL();
+		}
 	}
 
 	ZEND_FETCH_RESOURCE(httpsqs, httpsqs_t*, &hr, -1, HTTPSQS_RES_NAME, le_httpsqs);
@@ -314,12 +393,24 @@ PHP_FUNCTION(httpsqs_view) {
 
 PHP_FUNCTION(httpsqs_reset) {
 	httpsqs_t *httpsqs;
-	zval *hr;
+	zval *hr, **connection, *object = getThis();
 	char *queuename, *query;
 	int queuename_len, query_len;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs", &hr, &queuename, &queuename_len) == FAILURE) {
-		RETURN_NULL();
+	if (object) { 
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "s", &queuename, &queuename_len) == FAILURE) {
+			RETURN_FALSE;
+		}
+		if (zend_hash_find(Z_OBJPROP_P(object), "connection", sizeof("connection"), (void **) &connection) == FAILURE) {
+			RETURN_FALSE;
+		}
+
+		MAKE_STD_ZVAL(hr);
+		ZVAL_RESOURCE(hr, Z_LVAL_PP(connection));
+	} else {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rs", &hr, &queuename, &queuename_len) == FAILURE) {
+			RETURN_NULL();
+		}
 	}
 
 	ZEND_FETCH_RESOURCE(httpsqs, httpsqs_t*, &hr, -1, HTTPSQS_RES_NAME, le_httpsqs);
@@ -340,12 +431,24 @@ PHP_FUNCTION(httpsqs_reset) {
 
 PHP_FUNCTION(httpsqs_maxqueue) {
 	httpsqs_t *httpsqs;
-	zval *hr;
+	zval *hr, **connection, *object = getThis();
 	char *queuename, *query;
 	int queuename_len, query_len, maxqueue;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rsl", &hr, &queuename, &queuename_len, &maxqueue) == FAILURE) {
-		RETURN_NULL();
+	if (object) { 
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sl", &queuename, &queuename_len, &maxqueue) == FAILURE) {
+			RETURN_FALSE;
+		}
+		if (zend_hash_find(Z_OBJPROP_P(object), "connection", sizeof("connection"), (void **) &connection) == FAILURE) {
+			RETURN_FALSE;
+		}
+
+		MAKE_STD_ZVAL(hr);
+		ZVAL_RESOURCE(hr, Z_LVAL_PP(connection));
+	} else {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rsl", &hr, &queuename, &queuename_len, &maxqueue) == FAILURE) {
+			RETURN_NULL();
+		}
 	}
 
 	ZEND_FETCH_RESOURCE(httpsqs, httpsqs_t*, &hr, -1, HTTPSQS_RES_NAME, le_httpsqs);
@@ -366,12 +469,24 @@ PHP_FUNCTION(httpsqs_maxqueue) {
 
 PHP_FUNCTION(httpsqs_synctime) {
 	httpsqs_t *httpsqs;
-	zval *hr;
+	zval *hr, **connection, *object = getThis();
 	char *queuename, *query;
 	int queuename_len, query_len, synctime;
 
-	if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rsl", &hr, &queuename, &queuename_len, &synctime) == FAILURE) {
-		RETURN_NULL();
+	if (object) { 
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "sl", &queuename, &queuename_len, &synctime) == FAILURE) {
+			RETURN_FALSE;
+		}
+		if (zend_hash_find(Z_OBJPROP_P(object), "connection", sizeof("connection"), (void **) &connection) == FAILURE) {
+			RETURN_FALSE;
+		}
+
+		MAKE_STD_ZVAL(hr);
+		ZVAL_RESOURCE(hr, Z_LVAL_PP(connection));
+	} else {
+		if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "rsl", &hr, &queuename, &queuename_len, &synctime) == FAILURE) {
+			RETURN_NULL();
+		}
 	}
 
 	ZEND_FETCH_RESOURCE(httpsqs, httpsqs_t*, &hr, -1, HTTPSQS_RES_NAME, le_httpsqs);
