@@ -109,8 +109,8 @@ static void php_httpsqs_init_globals(zend_httpsqs_globals *httpsqs_globals_p TSR
 
 static void php_httpsqs_dtor(zend_rsrc_list_entry *rsrc TSRMLS_DC) {
 	httpsqs_t *httpsqs = (httpsqs_t *)rsrc->ptr;
+	efree(httpsqs->response_body);
 	efree(httpsqs->hostname);
-	efree(httpsqs->query);
 	efree(httpsqs);
 }
 
