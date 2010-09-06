@@ -557,6 +557,7 @@ int get_response(httpsqs_t *httpsqs, char *query, int query_len TSRMLS_DC) {
 
 	}
 
+    php_stream_close(stream);
 	httpsqs->response_pos = pos;
 	httpsqs->response_code = get_response_code(httpsqs->response_body);
 	
